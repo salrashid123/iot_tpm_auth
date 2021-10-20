@@ -177,10 +177,10 @@ func main() {
 		commands string
 		state    string
 	}{
-		config:   fmt.Sprintf("/devices/%v/config", deviceID),
-		events:   fmt.Sprintf("/devices/%v/events", deviceID),
-		commands: fmt.Sprintf("/devices/%v/commands/#", deviceID),
-		state:    fmt.Sprintf("/devices/%v/state", deviceID),
+		config:   fmt.Sprintf("/devices/%s/config", *deviceID),
+		events:   fmt.Sprintf("/devices/%s/events", *deviceID),
+		commands: fmt.Sprintf("/devices/%s/commands/#", *deviceID),
+		state:    fmt.Sprintf("/devices/%s/state", *deviceID),
 	}
 
 	fmt.Println("[main] Creating Subscription")

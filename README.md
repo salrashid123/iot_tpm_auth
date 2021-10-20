@@ -145,7 +145,7 @@ export PUBSUB_TOPIC=iotcore
 gcloud pubsub topics create iotcore
 gcloud pubsub subscriptions create iotpull --topic iotcore
 
-gcloud iot registries create myregistry --region=$REGION --enable-mqtt-config \
+gcloud iot registries create myregistry --region=$REGION --enable-mqtt-config --log-level=DEBUG \
    --event-notification-config=topic=$PUBSUB_TOPIC --public-key-path=ca_scratchpad/ca/iot-ca.crt
 ```
 
