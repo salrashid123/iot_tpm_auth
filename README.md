@@ -24,6 +24,18 @@ This tutorial demonstrates the following:
 
   It doesn't.  I just ordered the [TPM Evaluation Kit with a Raspberry Pi](https://www.mouser.com/new/infineon/infineon-slm9670-eval-board/) this...it'll take a week or so to get here.
 
+  Update  `10/28/11`:
+  
+  yeah!
+
+  ```bash
+  pi@raspberrypi:~ $ uname -a
+  Linux raspberrypi 5.10.63-v7+ #1459 SMP Wed Oct 6 16:41:10 BST 2021 armv7l GNU/Linux
+
+  pi@raspberrypi:~ $ tpm2_getrandom 10 --hex
+  522ccb70aa96ef3e144f
+  ```
+
 - This seems like a lot of manual steps to provision.  This can't possibly scale?
 
   You're right.  It can't.  I have precisely <1 week of knowledge in IoT stuff but in my reading, here's one way:
@@ -52,11 +64,12 @@ IoT Device Authentication](https://www.infineon.com/dgdl/Infineon-TPM_2_0_and_ce
   
   For more information, see 
   
-  - [How does TPM key attestation work?](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/tpm-key-attestation#how-does-tpm-key-attestation-work) (just ignore the bits about microsoft specific stuff;  the idea described there is the same)
+  - [How does TPM key attestation work?](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/tpm-key-attestation#how-does-tpm-key-attestation-work) (just ignore the bits about microsoft specific stuff;  the idea described there is the same).  Also see [Azure IoT Hub Device Provisioning Service](https://docs.microsoft.com/en-us/azure/iot-dps/about-iot-dps#behind-the-scenes)
 
   - TPM Remote Attestation with grpc  
-    * `push server->client` aspect [go_tpm_remote_attestation](https://github.com/salrashid123/go_tpm_remote_attestation).  This repos is a complete client/server which mimics the [TPM Remote attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html) document.  In this, the Verifier (server) initiates contact with the attestor.  This isn't what we want but it demonstrates the same concepts.  This repo is quite relevant to this discussion because here the Verifier asks for an unrestricted key from the TPM and then *issues* an x509 certificate for that key using a CA it has.  This is essentially waht we want if we reverse the flow
-    * `pull client->server` aspect [gcp_tokendistributor](https://github.com/salrashid123/gcp_tokendistributor) is another sample that fulfils an unrelated usecase (untrusted multiparty compute).  This is a pull model we're after but it does a whole bunch of other stuff. 
+    * `push server->client` [go_tpm_remote_attestation](https://github.com/salrashid123/go_tpm_remote_attestation).  This repos' `push` branch is a complete client/server which mimics the [TPM Remote attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html) document.  In this, the Verifier (server) initiates contact with the attestor.  This isn't what we want but it demonstrates the same concepts.  This repo is quite relevant to this discussion because here the Verifier asks for an unrestricted key from the TPM and then *issues* an x509 certificate for that key using a CA it has.  This is essentially waht we want if we reverse the flow
+    * `pull client->server` [go_tpm_remote_attestation](https://github.com/salrashid123/go_tpm_remote_attestation/tree/pull) `pull` branch is what we want here, IMO.  In this flow, the TPM "calls out" to a server and gets registered.
+
   - TPM based mTLS
     *  Sample repo here shows how you can use a TPM's key for mTLS: [go_tpm_https_embed](https://github.com/salrashid123/go_tpm_https_embed )
 
