@@ -1,13 +1,9 @@
 package main
 
 import (
-	"crypto"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -16,8 +12,8 @@ import (
 	jwt "github.com/golang-jwt/jwt"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	saltpm "github.com/salrashid123/signer/tpm"
-	//salpem "github.com/salrashid123/signer/pem"
+
+	tpmjwt "github.com/salrashid123/golang-jwt-tpm"
 )
 
 var (
@@ -38,25 +34,8 @@ func main() {
 		return
 	}
 
-	// comment this section if using raw PEMkey
-	// r, err := salpem.NewPEMCrypto(&salpem.PEM{
-	// 	PrivatePEMFile: "ca_scratchpad/certs/iot1-rsa.key",
-	// })
-	// if err != nil {
-	// 	fmt.Printf("Error loading PEM %v", err)
-	// 	return
-	// }
-
-	// uncomment if using TPM
-	r, err := saltpm.NewTPMCrypto(&saltpm.TPM{
-		TpmDevice: "/dev/tpm0",
-		//TpmHandle: 0x81010002,
-		TpmHandleFile: "key.bin",
-	})
-	if err != nil {
-		fmt.Printf("Error loading TPM %v", err)
-		return
-	}
+	ctx := context.Background()
+	var keyctx interface{}
 
 	// https://cloud.google.com/iot/docs/concepts/device-security#authentication
 	// "The connection is closed when the JWT expires (after accounting for the allowed clock drift)."
@@ -66,33 +45,33 @@ func main() {
 		ExpiresAt: time.Now().Add(300 * time.Second).Unix(),
 	}
 
-	SigningMethodRS256 = &SigningMethodRSA{"RS256", crypto.SHA256}
+	tpmjwt.SigningMethodTPMRS256.Override()
+	token := jwt.NewWithClaims(tpmjwt.SigningMethodTPMRS256, claims)
 
-	jwt.RegisterSigningMethod("RS256", func() jwt.SigningMethod {
-		return SigningMethodRS256
-	})
-
-	token := jwt.NewWithClaims(jwt.GetSigningMethod("RS256"), claims)
-
-	p := r.Public()
-	pubKey, ok := p.(*rsa.PublicKey)
-	if !ok {
-		fmt.Printf("Error reading key %v", err)
-		return
+	config := &tpmjwt.TPMConfig{
+		TPMDevice:     "/dev/tpm0",
+		KeyHandleFile: "key.bin",
+		//KeyTemplate:   tpmjwt.AttestationKeyParametersRSA256,
+		KeyTemplate: tpmjwt.UnrestrictedKeyParametersRSA256,
 	}
-	derEncoded, err := x509.MarshalPKIXPublicKey(pubKey)
+
+	keyctx, err := tpmjwt.NewTPMContext(ctx, config)
 	if err != nil {
-		fmt.Printf("Error MarshalPKIXPublicKey %v", err)
+		fmt.Printf("Unable to initialize tpmJWT: %v", err)
 		return
 	}
 
-	hasher := sha256.New()
-	hasher.Write(derEncoded)
-	id := hex.EncodeToString(hasher.Sum(nil))
+	token.Header["kid"] = config.GetKeyID()
+	tokenString, err := token.SignedString(keyctx)
+	if err != nil {
+		fmt.Printf("Error signing %v", err)
+		return
+	}
+	fmt.Printf("TOKEN: %s\n", tokenString)
 
-	token.Header["kid"] = id
+	token.Header["kid"] = config.GetKeyID()
 
-	rcc, err := token.SignedString(&r)
+	rcc, err := token.SignedString(keyctx)
 	if err != nil {
 		fmt.Printf("Error Signing %v", err)
 		return
@@ -102,14 +81,21 @@ func main() {
 
 	/// ************
 
-	rra, err := jwt.Parse(rcc, func(token *jwt.Token) (interface{}, error) {
-		return r.Public(), nil
-	})
+	keyFunc, err := tpmjwt.TPMVerfiyKeyfunc(ctx, config)
 	if err != nil {
-		fmt.Printf("     Error parsing JWT %v", err)
+		fmt.Printf("could not get keyFunc: %v", err)
 		return
 	}
-	fmt.Printf("%v\n", rra.Valid)
+
+	vtoken, err := jwt.Parse(tokenString, keyFunc)
+	if err != nil {
+		fmt.Printf("Error verifying token %v", err)
+		return
+	}
+
+	if vtoken.Valid {
+		fmt.Printf("     verified with TPM PublicKey")
+	}
 
 	// if rra.Valid {
 	// 	os.Exit(1)
@@ -126,7 +112,7 @@ func main() {
 	}
 
 	certpool.AppendCertsFromPEM(pemCerts)
-	config := &tls.Config{
+	tlsconfig := &tls.Config{
 		RootCAs:            certpool,
 		ClientAuth:         tls.NoClientCert,
 		ClientCAs:          nil,
@@ -146,7 +132,7 @@ func main() {
 	broker := fmt.Sprintf("ssl://%v:%v", mqttHost, mqttPort)
 
 	opts.AddBroker(broker)
-	opts.SetClientID(clientID).SetTLSConfig(config)
+	opts.SetClientID(clientID).SetTLSConfig(tlsconfig)
 
 	// opts.SetCredentialsProvider(func() (username string, password string) {
 	// 	return "unused", rcc
@@ -214,56 +200,4 @@ func main() {
 
 	client.Disconnect(250)
 
-}
-
-type SigningMethodRSA struct {
-	Name string
-	Hash crypto.Hash
-}
-
-var (
-	SigningMethodRS256 *SigningMethodRSA
-)
-
-func (m *SigningMethodRSA) Alg() string {
-	return m.Name
-}
-
-func (m *SigningMethodRSA) Verify(signingString, signature string, key interface{}) error {
-	var err error
-
-	var sig []byte
-	if sig, err = jwt.DecodeSegment(signature); err != nil {
-		return err
-	}
-
-	var rsaKey *rsa.PublicKey
-	var ok bool
-
-	if rsaKey, ok = key.(*rsa.PublicKey); !ok {
-		return jwt.ErrInvalidKeyType
-	}
-
-	h := sha256.New()
-	h.Write([]byte(signingString))
-	digest := h.Sum(nil)
-
-	return rsa.VerifyPKCS1v15(rsaKey, m.Hash, digest, sig)
-
-}
-
-func (m *SigningMethodRSA) Sign(signingString string, key interface{}) (string, error) {
-
-	k, ok := key.(crypto.Signer)
-	if !ok {
-		return "", jwt.ErrInvalidKeyType
-	}
-	h := sha256.New()
-	h.Write([]byte(signingString))
-	digest := h.Sum(nil)
-	s, err := k.Sign(rand.Reader, digest, crypto.SHA256)
-	if err != nil {
-		return "", err
-	}
-	return jwt.EncodeSegment(s), nil
 }

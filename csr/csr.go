@@ -107,7 +107,7 @@ func main() {
 	if err != nil {
 		glog.Fatalf("ContextSave failed for ekh: %v", err)
 	}
-	err = ioutil.WriteFile("k.bin", khBytes, 0644)
+	err = ioutil.WriteFile(*keyFile, khBytes, 0644)
 	if err != nil {
 		glog.Fatalf("ContextSave failed for ekh: %v", err)
 	}
