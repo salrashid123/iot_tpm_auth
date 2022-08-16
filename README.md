@@ -1,4 +1,11 @@
-# Google Cloud IoT Core Authentication with Trusted Platform Module (TPM)
+## Google Cloud IoT Core Authentication with Trusted Platform Module (TPM)
+
+
+>>> NOTE `Google Cloud IoT Core is being retired on August 16, 2023. Contact your Google Cloud account team for more information.`
+
+soooo...ignore the following unless you just have to
+
+----
 
 A simple demo describing a contrived way to provision and authenticate a device to [Google IoT Core](https://cloud.google.com/iot/docs) where the private key used for authentication is permanently embedded in hardware (a `Trusted Platform Module (TPM)`)
 
